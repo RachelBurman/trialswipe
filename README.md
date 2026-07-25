@@ -13,8 +13,9 @@ criteria into clear, plain-English screening questions.
 
 ## Current status
 
-The project currently provides the application foundation and a typed clinical
-trial search API. There is no patient-facing search interface yet.
+The project currently provides the application foundation, a typed clinical
+trial search API, and conservative AI-assisted eligibility screening. There is
+no patient-facing search interface yet.
 
 - T3 application using the Next.js App Router
 - End-to-end typed tRPC API
@@ -22,7 +23,7 @@ trial search API. There is no patient-facing search interface yet.
 - Prisma connected to Supabase Postgres
 - Supabase browser and SSR clients installed
 - NextAuth scaffolded for later use
-- Anthropic SDK installed for future plain-English eligibility screening
+- Server-only Anthropic eligibility screening with defensive JSON validation
 
 ## How trial search works
 
@@ -57,6 +58,55 @@ Each result contains:
 
 Study data comes from the
 [ClinicalTrials.gov v2 API](https://clinicaltrials.gov/data-api/api).
+
+## How eligibility screening works
+
+The public `gatekeeper.screen` tRPC mutation takes raw trial eligibility
+criteria and a small patient profile:
+
+```ts
+{
+  eligibilityText: string;
+  profile: {
+    condition: string;
+    age?: number;
+    sex?: string;
+    location?: string;
+    notes?: string;
+  };
+}
+```
+
+The server asks Anthropic to split the criteria into individual inclusion and
+exclusion rules. Each rule receives a conservative `pass`, `fail`, or
+`unknown` status with a plain-English reason. Missing profile information
+always produces `unknown`; the model is explicitly instructed not to guess
+clinical facts.
+
+The typed result is:
+
+```ts
+{
+  checks: {
+    text: string;
+    kind: "inclusion" | "exclusion";
+    status: "pass" | "fail" | "unknown";
+    reason: string;
+  }[];
+  verdict: "likely_eligible" | "likely_ineligible" | "needs_more_info";
+  verdictSummary: string;
+  doctorQuestions: string[];
+}
+```
+
+Anthropic responses are stripped of stray Markdown fences, parsed as JSON, and
+validated with Zod. Invalid responses return a safe `needs_more_info` fallback
+instead of failing the request. The Anthropic client and API key exist only in
+server code.
+
+Screening results are preliminary. They must never be presented as a confirmed
+eligibility decision or a substitute for advice from the trial team or the
+patient's clinician.
 
 ## Technology
 
@@ -161,6 +211,7 @@ src/
     api/
       root.ts                 Root tRPC router
       routers/
+        gatekeeper.ts         AI-assisted eligibility screening mutation
         trials.ts             ClinicalTrials.gov search procedure
     auth/                     NextAuth configuration
     db.ts                     Prisma client
@@ -170,11 +221,11 @@ src/
 
 ## Data and privacy
 
-Clinical trial information is fetched from ClinicalTrials.gov. Patient
-screening is not implemented yet. Before collecting screening answers, the
-project must define appropriate consent, retention, security, and sensitive
-health-data handling policies. Do not use real patient information during
-development.
+Clinical trial information is fetched from ClinicalTrials.gov. Screening is
+currently a stateless server API with no patient-facing UI or profile storage.
+Before collecting real screening answers, the project must define appropriate
+consent, retention, access control, security, and sensitive health-data
+handling policies. Do not use real patient information during development.
 
 ## License
 
