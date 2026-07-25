@@ -332,7 +332,7 @@ function TrialDetails({
             )}
           </section>
 
-          <aside className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
+          <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-600">
             This is an automated first-pass screen, not medical advice. Confirm
             eligibility with the trial team and your clinician.
           </aside>
@@ -562,6 +562,10 @@ export function SwipeDeck({ cards }: { cards: MatchCard[] }) {
           Explore
         </button>
       </div>
+
+      <p className="mt-4 text-center text-sm leading-6 text-slate-500">
+        First-pass screen, not medical advice.
+      </p>
 
       <AnimatePresence>
         {detailsCard && (

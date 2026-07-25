@@ -195,8 +195,8 @@ export function IntakeScreen() {
           </form>
 
           <p className="mt-5 text-center text-sm leading-6 text-slate-500">
-            This is an early screening, not a medical decision. The trial team
-            always confirms who can take part.
+            TrialSwipe gives an automated first-pass screen, not medical advice.
+            Always confirm eligibility with the trial team and your clinician.
           </p>
         </section>
 
