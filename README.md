@@ -2,71 +2,49 @@
 
 Swipe through clinical trials you might actually qualify for.
 
-TrialSwipe is a patient-first clinical trial discovery application. It searches
-actively recruiting studies and is being built to turn dense eligibility
-criteria into clear, plain-English screening questions.
+TrialSwipe is a mobile-first clinical trial discovery experience for patients.
+It searches actively recruiting studies, screens dense eligibility criteria
+against a small patient profile, and explains the result in plain English.
 
 > [!IMPORTANT]
-> TrialSwipe is an informational discovery tool, not medical advice. A match
-> does not confirm eligibility. Trial investigators make the final eligibility
-> decision.
+> TrialSwipe provides an automated first-pass screen, not medical advice. A
+> match does not confirm eligibility. Always confirm eligibility with the
+> trial team and your clinician.
 
-## Current status
+## What it does
 
-The project currently provides the application foundation, a typed clinical
-trial search API, and conservative AI-assisted eligibility screening. There is
-no patient-facing search interface yet.
+1. A patient enters a condition and, optionally, their age, sex, location, and
+   other relevant details.
+2. TrialSwipe fetches live recruiting studies from ClinicalTrials.gov.
+3. Each study's eligibility criteria are screened conservatively with
+   Anthropic.
+4. Results are ranked into a swipeable deck:
+   `likely_eligible`, `needs_more_info`, then `likely_ineligible`.
+5. The patient can dismiss a trial, save it to explore later, or open a full
+   explanation.
 
-- T3 application using the Next.js App Router
-- End-to-end typed tRPC API
-- ClinicalTrials.gov v2 search integration
-- Prisma connected to Supabase Postgres
-- Supabase browser and SSR clients installed
-- NextAuth scaffolded for later use
-- Server-only Anthropic eligibility screening with defensive JSON validation
+The current interface includes:
 
-## How trial search works
+- A calm, accessible, mobile-first intake form
+- A Tinder-style swipe deck with button alternatives to every gesture
+- Plain-English verdicts and the most relevant screening reasons
+- Full inclusion and exclusion checks in an expanded detail view
+- Trial site and travel-burden estimates
+- Up to three questions to ask the trial team or clinician
+- A saved-trials panel with links to the official study pages
+- Profile editing without losing the current deck position or saved trials
+- Medical-advice guardrails throughout the experience
 
-The public `trials.search` tRPC procedure accepts a condition and optional
-result limit. It queries ClinicalTrials.gov for recruiting studies and maps the
-nested API response into a small, defensive application model.
+Saved trials and profile data currently live only in React state for the active
+browser session. Refreshing the page clears them.
 
-```ts
-const trials = await api.trials.search({
-  condition: "asthma",
-  limit: 10,
-});
-```
+## How matching works
 
-Each result contains:
-
-```ts
-{
-  nctId: string;
-  title: string;
-  status: string;
-  phase: string | null;
-  conditions: string[];
-  eligibilityText: string;
-  locations: {
-    city: string | null;
-    country: string | null;
-  }[];
-  url: string;
-}
-```
-
-Study data comes from the
-[ClinicalTrials.gov v2 API](https://clinicaltrials.gov/data-api/api).
-
-## How eligibility screening works
-
-The public `gatekeeper.screen` tRPC mutation takes raw trial eligibility
-criteria and a small patient profile:
+The public `match.run` tRPC mutation accepts a profile and an optional result
+limit:
 
 ```ts
 {
-  eligibilityText: string;
   profile: {
     condition: string;
     age?: number;
@@ -74,50 +52,101 @@ criteria and a small patient profile:
     location?: string;
     notes?: string;
   };
+  limit?: number; // defaults to 8
 }
 ```
 
-The server asks Anthropic to split the criteria into individual inclusion and
-exclusion rules. Each rule receives a conservative `pass`, `fail`, or
-`unknown` status with a plain-English reason. Missing profile information
-always produces `unknown`; the model is explicitly instructed not to guess
-clinical facts.
+The matching pipeline:
 
-The typed result is:
+1. Calls `trials.search` through shared server logic to fetch recruiting
+   studies for the supplied condition.
+2. Calls the shared eligibility screener for every study concurrently.
+3. Combines trial data, screening results, and a simple travel estimate.
+4. Sorts the cards by likely fit while preserving typed results end to end.
+
+Each returned card contains:
 
 ```ts
 {
+  nctId: string;
+  title: string;
+  phase: string | null;
+  status: string;
+  conditions: string[];
+  url: string;
+  verdict:
+    | "likely_eligible"
+    | "likely_ineligible"
+    | "needs_more_info";
+  verdictSummary: string;
   checks: {
     text: string;
     kind: "inclusion" | "exclusion";
     status: "pass" | "fail" | "unknown";
     reason: string;
   }[];
-  verdict: "likely_eligible" | "likely_ineligible" | "needs_more_info";
-  verdictSummary: string;
   doctorQuestions: string[];
+  costEstimate: {
+    siteCount: number;
+    nearestSite: string | null;
+    travelBurden: "low" | "medium" | "high" | "unknown";
+    note: string;
+  };
 }
 ```
 
-Anthropic responses are stripped of stray Markdown fences, parsed as JSON, and
-validated with Zod. Invalid responses return a safe `needs_more_info` fallback
-instead of failing the request. The Anthropic client and API key exist only in
-server code.
+The travel estimate is a lightweight location heuristic, not a route,
+distance, time, or financial-cost calculation.
 
-Screening results are preliminary. They must never be presented as a confirmed
-eligibility decision or a substitute for advice from the trial team or the
-patient's clinician.
+## Clinical trial data
+
+The shared search helper calls the
+[ClinicalTrials.gov v2 API](https://clinicaltrials.gov/data-api/api):
+
+```text
+GET https://clinicaltrials.gov/api/v2/studies
+```
+
+It requests recruiting studies for the supplied condition and defensively
+maps the deeply nested, nullable response into a smaller application model.
+The underlying `trials.search` query is also exposed directly through tRPC.
+
+## Eligibility screening
+
+The shared screener and public `gatekeeper.screen` mutation use the Anthropic
+TypeScript SDK from server-only code. The API key is never exposed to the
+browser.
+
+The model is instructed to:
+
+- Split the trial text into individual inclusion and exclusion rules
+- Mark each rule as `pass`, `fail`, or `unknown`
+- Use `unknown` whenever the profile does not contain enough information
+- Never guess diagnoses, measurements, medicines, test results, or history
+- Explain each decision in language a non-expert can understand
+- Return no more than three useful questions for the trial team or clinician
+
+Long eligibility documents are split into manageable chunks and screened
+concurrently. Results are validated with Zod and merged conservatively. Invalid
+JSON, an unexpected response shape, missing criteria, or a failed model request
+returns a safe `needs_more_info` result instead of crashing the matching flow.
 
 ## Technology
 
-- [Next.js](https://nextjs.org/) with the App Router
-- [TypeScript](https://www.typescriptlang.org/)
+- [Next.js](https://nextjs.org/) App Router
+- [React](https://react.dev/) and TypeScript
 - [Tailwind CSS](https://tailwindcss.com/)
-- [tRPC](https://trpc.io/)
+- [Framer Motion](https://motion.dev/) for the swipe interaction
+- [tRPC](https://trpc.io/) and TanStack Query
+- [Zod](https://zod.dev/) validation
+- [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript)
+- [ClinicalTrials.gov v2 API](https://clinicaltrials.gov/data-api/api)
 - [Prisma](https://www.prisma.io/)
 - [Supabase](https://supabase.com/) Postgres
-- [NextAuth](https://authjs.dev/)
-- [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript)
+- [NextAuth](https://authjs.dev/), scaffolded for future authentication
+
+Authentication does not currently block the public discovery and screening
+flow.
 
 ## Local development
 
@@ -163,30 +192,44 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=""
 DATABASE_URL=""
 ```
 
-For `DATABASE_URL`, use the Supabase **Session pooler** connection string on
-port `5432`. This is available from the project's **Connect** panel.
+Use a Supabase Postgres connection string for `DATABASE_URL`. Never commit
+`.env`; it contains database and API credentials. Only variables prefixed with
+`NEXT_PUBLIC_` are exposed to the browser.
 
-Never commit `.env`. It contains the database password and other credentials.
-Only the variables prefixed with `NEXT_PUBLIC_` are intended to be exposed to
-the browser.
-
-### 3. Create the database schema
+### 3. Synchronize the database
 
 ```bash
 npm run db:push
 ```
 
-This creates the Prisma models required by the scaffold, including the
-NextAuth tables.
-
-### 4. Start the application
+### 4. Start TrialSwipe
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The scaffold page should
-load and display `Hello from tRPC`.
+Open [http://localhost:3000](http://localhost:3000), enter a condition, and
+select **Find trials**. A real match request can take a little while because
+multiple studies are screened through the model.
+
+## Validation
+
+Run the static checks and production build:
+
+```bash
+npm run typecheck
+npm run build
+```
+
+Run the server-side end-to-end smoke script:
+
+```bash
+npx tsx scripts/smoke.ts
+```
+
+The smoke script searches for five recruiting type 2 diabetes studies, screens
+them against a sample London profile, and prints the ranked cards. It makes
+real ClinicalTrials.gov and Anthropic requests and may incur API usage.
 
 ## Available scripts
 
@@ -194,7 +237,7 @@ load and display `Hello from tRPC`.
 | --- | --- |
 | `npm run dev` | Start the local development server |
 | `npm run build` | Create a production build |
-| `npm run typecheck` | Run the TypeScript compiler without emitting files |
+| `npm run typecheck` | Run TypeScript without emitting files |
 | `npm run db:push` | Synchronize the Prisma schema with the database |
 | `npm run db:generate` | Create and apply a development migration |
 | `npm run db:migrate` | Apply committed migrations |
@@ -203,29 +246,45 @@ load and display `Hello from tRPC`.
 ## Project structure
 
 ```text
-prisma/
-  schema.prisma               Database schema
+scripts/
+  smoke.ts                    Real end-to-end matching smoke script
 src/
-  app/                        Next.js App Router
+  app/
+    _components/
+      intake-screen.tsx       Intake, navigation, and shared client state
+      saved-trials-panel.tsx  Session shortlist
+      swipe-deck.tsx          Swipe cards and expanded trial details
+    page.tsx                  Main application page
   server/
     api/
       root.ts                 Root tRPC router
       routers/
-        gatekeeper.ts         AI-assisted eligibility screening mutation
-        trials.ts             ClinicalTrials.gov search procedure
+        gatekeeper.ts         Eligibility screening mutation
+        match.ts              Ranked matching mutation
+        trials.ts             ClinicalTrials.gov search query
+    clinical-trials.ts        Shared trial fetch and defensive parsing
+    eligibility-screening.ts Shared Anthropic screening and validation
     auth/                     NextAuth configuration
     db.ts                     Prisma client
   env.js                      Validated environment variables
   trpc/                       tRPC React and server clients
+prisma/
+  schema.prisma               Database schema
 ```
 
-## Data and privacy
+## Data, privacy, and safety
 
-Clinical trial information is fetched from ClinicalTrials.gov. Screening is
-currently a stateless server API with no patient-facing UI or profile storage.
-Before collecting real screening answers, the project must define appropriate
-consent, retention, access control, security, and sensitive health-data
-handling policies. Do not use real patient information during development.
+- Trial data comes from ClinicalTrials.gov.
+- Patient profile details and eligibility text are sent to the server-side
+  screening pipeline and Anthropic for processing.
+- TrialSwipe does not currently persist profiles, screening results, or saved
+  trials.
+- No authentication is required for the current public flow.
+- Screening is intentionally conservative and cannot confirm eligibility.
+
+Before handling real patient information, the project needs appropriate
+consent, retention, access-control, security, and sensitive health-data
+policies. Do not use real patient information during development.
 
 ## License
 
