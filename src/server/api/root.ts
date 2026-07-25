@@ -1,4 +1,5 @@
 import { gatekeeperRouter } from "~/server/api/routers/gatekeeper";
+import { matchRouter } from "~/server/api/routers/match";
 import { postRouter } from "~/server/api/routers/post";
 import { trialsRouter } from "~/server/api/routers/trials";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
@@ -10,6 +11,7 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  */
 export const appRouter = createTRPCRouter({
   gatekeeper: gatekeeperRouter,
+  match: matchRouter,
   post: postRouter,
   trials: trialsRouter,
 });
