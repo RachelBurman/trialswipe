@@ -2,6 +2,7 @@
 
 import {
   animate,
+  AnimatePresence,
   motion,
   useMotionValue,
   useReducedMotion,
@@ -34,7 +35,56 @@ const verdictCopy: Record<
   },
 };
 
-function CardContent({ card }: { card: MatchCard }) {
+const checkStatusCopy: Record<
+  MatchCard["checks"][number]["status"],
+  { label: string; className: string; dotClassName: string }
+> = {
+  pass: {
+    label: "Pass",
+    className: "bg-emerald-50 text-emerald-800 ring-emerald-700/15",
+    dotClassName: "bg-emerald-600",
+  },
+  unknown: {
+    label: "More information needed",
+    className: "bg-amber-50 text-amber-900 ring-amber-700/15",
+    dotClassName: "bg-amber-500",
+  },
+  fail: {
+    label: "Does not appear to match",
+    className: "bg-slate-100 text-slate-700 ring-slate-600/15",
+    dotClassName: "bg-slate-500",
+  },
+};
+
+const travelBurdenCopy: Record<
+  MatchCard["costEstimate"]["travelBurden"],
+  { label: string; className: string }
+> = {
+  low: {
+    label: "Low",
+    className: "bg-emerald-50 text-emerald-800 ring-emerald-700/15",
+  },
+  medium: {
+    label: "Medium",
+    className: "bg-amber-50 text-amber-900 ring-amber-700/15",
+  },
+  high: {
+    label: "High",
+    className: "bg-slate-100 text-slate-700 ring-slate-600/15",
+  },
+  unknown: {
+    label: "Unknown",
+    className: "bg-slate-100 text-slate-700 ring-slate-600/15",
+  },
+};
+
+function CardContent({
+  card,
+  onSeeDetails,
+}: {
+  card: MatchCard;
+  onSeeDetails?: () => void;
+}) {
   const verdict = verdictCopy[card.verdict];
   const reasons = card.checks.slice(0, 3);
 
@@ -75,7 +125,228 @@ function CardContent({ card }: { card: MatchCard }) {
           </ul>
         </div>
       )}
+
+      {onSeeDetails && (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={onSeeDetails}
+          className="mt-7 flex min-h-12 w-full items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-base font-semibold text-emerald-900 outline-none transition hover:bg-emerald-100 focus:ring-4 focus:ring-emerald-100"
+        >
+          See details
+        </button>
+      )}
     </>
+  );
+}
+
+function TrialDetails({
+  card,
+  onClose,
+}: {
+  card: MatchCard;
+  onClose: () => void;
+}) {
+  const verdict = verdictCopy[card.verdict];
+  const travelBurden = travelBurdenCopy[card.costEstimate.travelBurden];
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose]);
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <motion.section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trial-details-title"
+        className="max-h-[94dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:max-h-[90dvh] sm:rounded-3xl"
+        initial={{ y: 32, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 32, opacity: 0 }}
+        transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-8">
+          <p className="text-sm font-semibold text-slate-600">Trial details</p>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none transition hover:bg-slate-50 focus:ring-4 focus:ring-slate-200"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="space-y-9 px-5 py-7 sm:px-8 sm:py-9">
+          <header>
+            <p
+              className={`inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ring-1 ring-inset ${verdict.className}`}
+            >
+              {verdict.label}
+            </p>
+            <h3
+              id="trial-details-title"
+              className="mt-4 text-2xl font-bold leading-9 text-slate-950"
+            >
+              {card.title}
+            </h3>
+            <p className="mt-4 leading-7 text-slate-600">
+              {card.verdictSummary}
+            </p>
+          </header>
+
+          <section aria-labelledby="eligibility-checks-heading">
+            <h4
+              id="eligibility-checks-heading"
+              className="text-xl font-bold text-slate-950"
+            >
+              Eligibility checks
+            </h4>
+
+            {card.checks.length > 0 ? (
+              <ul className="mt-5 space-y-4">
+                {card.checks.map((check, index) => {
+                  const status = checkStatusCopy[check.status];
+
+                  return (
+                    <li
+                      key={`${check.kind}-${index}-${check.text}`}
+                      className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 ring-1 ring-inset ring-slate-300">
+                          {check.kind}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${status.className}`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`h-2 w-2 rounded-full ${status.dotClassName}`}
+                          />
+                          {status.label}
+                        </span>
+                      </div>
+                      <p className="mt-4 font-semibold leading-7 text-slate-900">
+                        {check.text}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
+                        {check.reason}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="mt-4 leading-7 text-slate-600">
+                No individual eligibility checks were available for this trial.
+              </p>
+            )}
+          </section>
+
+          <section
+            aria-labelledby="travel-heading"
+            className="rounded-2xl border border-slate-200 p-5 sm:p-6"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h4 id="travel-heading" className="text-xl font-bold text-slate-950">
+                Travel estimate
+              </h4>
+              <span
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold ring-1 ring-inset ${travelBurden.className}`}
+              >
+                {travelBurden.label} burden
+              </span>
+            </div>
+            <dl className="mt-5 grid gap-5 sm:grid-cols-2">
+              <div>
+                <dt className="text-sm font-semibold text-slate-500">
+                  Listed sites
+                </dt>
+                <dd className="mt-1 text-lg font-semibold text-slate-900">
+                  {card.costEstimate.siteCount}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-semibold text-slate-500">
+                  Nearest matching site
+                </dt>
+                <dd className="mt-1 text-base font-semibold text-slate-900">
+                  {card.costEstimate.nearestSite ?? "No match found"}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-5 border-t border-slate-200 pt-5 leading-7 text-slate-600">
+              {card.costEstimate.note}
+            </p>
+          </section>
+
+          <section aria-labelledby="doctor-questions-heading">
+            <h4
+              id="doctor-questions-heading"
+              className="text-xl font-bold text-slate-950"
+            >
+              Questions to ask the trial team
+            </h4>
+            {card.doctorQuestions.length > 0 ? (
+              <ol className="mt-5 space-y-4">
+                {card.doctorQuestions.map((question, index) => (
+                  <li
+                    key={`${index}-${question}`}
+                    className="flex gap-4 rounded-2xl bg-emerald-50/70 p-4 leading-7 text-slate-700"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-800 text-sm font-bold text-white">
+                      {index + 1}
+                    </span>
+                    <span>{question}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="mt-4 leading-7 text-slate-600">
+                No suggested questions were generated for this trial.
+              </p>
+            )}
+          </section>
+
+          <aside className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
+            This is an automated first-pass screen, not medical advice. Confirm
+            eligibility with the trial team and your clinician.
+          </aside>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-14 w-full rounded-2xl bg-emerald-800 px-5 py-3 text-base font-semibold text-white outline-none transition hover:bg-emerald-900 focus:ring-4 focus:ring-emerald-200"
+          >
+            Close details
+          </button>
+        </div>
+      </motion.section>
+    </motion.div>
   );
 }
 
@@ -83,6 +354,7 @@ export function SwipeDeck({ cards }: { cards: MatchCard[] }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [exploring, setExploring] = useState<MatchCard[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [detailsCard, setDetailsCard] = useState<MatchCard | null>(null);
   const isAnimatingRef = useRef(false);
   const shouldReduceMotion = useReducedMotion();
 
@@ -107,6 +379,7 @@ export function SwipeDeck({ cards }: { cards: MatchCard[] }) {
   useEffect(() => {
     setCurrentIndex(0);
     setExploring([]);
+    setDetailsCard(null);
     x.set(0);
   }, [cards, x]);
 
@@ -210,16 +483,14 @@ export function SwipeDeck({ cards }: { cards: MatchCard[] }) {
                     1 - stackIndex * 0.035
                   })`,
                 }}
-              >
-                <CardContent card={card} />
-              </article>
+              />
             );
           }
 
           return (
             <motion.article
               key={card.nctId}
-              drag={isAnimating ? false : "x"}
+              drag={isAnimating || detailsCard ? false : "x"}
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={0.82}
               dragMomentum={false}
@@ -264,7 +535,10 @@ export function SwipeDeck({ cards }: { cards: MatchCard[] }) {
                 Not for me
               </motion.p>
 
-              <CardContent card={card} />
+              <CardContent
+                card={card}
+                onSeeDetails={() => setDetailsCard(card)}
+              />
             </motion.article>
           );
         })}
@@ -288,6 +562,16 @@ export function SwipeDeck({ cards }: { cards: MatchCard[] }) {
           Explore
         </button>
       </div>
+
+      <AnimatePresence>
+        {detailsCard && (
+          <TrialDetails
+            key={detailsCard.nctId}
+            card={detailsCard}
+            onClose={() => setDetailsCard(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
