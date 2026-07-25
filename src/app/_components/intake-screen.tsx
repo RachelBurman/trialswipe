@@ -2,27 +2,8 @@
 
 import { type FormEvent, useState } from "react";
 
-import { api, type RouterOutputs } from "~/trpc/react";
-
-type MatchCard = RouterOutputs["match"]["run"][number];
-
-const verdictCopy: Record<
-  MatchCard["verdict"],
-  { label: string; className: string }
-> = {
-  likely_eligible: {
-    label: "Likely eligible",
-    className: "bg-emerald-50 text-emerald-800 ring-emerald-700/15",
-  },
-  needs_more_info: {
-    label: "More information needed",
-    className: "bg-amber-50 text-amber-900 ring-amber-700/15",
-  },
-  likely_ineligible: {
-    label: "Likely not eligible",
-    className: "bg-rose-50 text-rose-800 ring-rose-700/15",
-  },
-};
+import { SwipeDeck } from "~/app/_components/swipe-deck";
+import { api } from "~/trpc/react";
 
 const optionalText = (value: string): string | undefined => {
   const trimmed = value.trim();
@@ -268,30 +249,7 @@ export function IntakeScreen() {
               </div>
 
               {cards.length > 0 ? (
-                <ul className="space-y-4">
-                  {cards.map((card) => {
-                    const verdict = verdictCopy[card.verdict];
-
-                    return (
-                      <li
-                        key={card.nctId}
-                        className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
-                      >
-                        <p
-                          className={`inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ring-1 ring-inset ${verdict.className}`}
-                        >
-                          {verdict.label}
-                        </p>
-                        <h3 className="mt-4 text-lg font-semibold leading-7 text-slate-950 sm:text-xl">
-                          {card.title}
-                        </h3>
-                        <p className="mt-3 leading-7 text-slate-600">
-                          {card.verdictSummary}
-                        </p>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <SwipeDeck cards={cards} />
               ) : (
                 <div className="rounded-3xl border border-slate-200 bg-white px-6 py-8 text-center">
                   <p className="font-semibold text-slate-900">
