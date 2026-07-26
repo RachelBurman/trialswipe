@@ -181,6 +181,8 @@ Fill in the values in `.env`:
 
 ```dotenv
 AUTH_SECRET=""
+
+# Optional: leave both blank to disable Discord authentication
 AUTH_DISCORD_ID=""
 AUTH_DISCORD_SECRET=""
 
